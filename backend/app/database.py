@@ -1,21 +1,21 @@
 """
 database.py — SQLAlchemy async engine, session factory, and Base model.
 Connects to Supabase PostgreSQL using asyncpg driver.
+PgBouncer-compatible: statement_cache_size=0 + NullPool.
 """
-
 from collections.abc import AsyncGenerator
-
 from sqlalchemy.ext.asyncio import (
     AsyncSession,
     async_sessionmaker,
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
+from sqlalchemy.pool import NullPool
 from app.config import get_settings
 
 settings = get_settings()
 
-# Convert standard postgres:// URL to asyncpg-compatible postgresql+asyncpg://
+
 def _build_async_url(url: str) -> str:
     """Transform sync PostgreSQL URL to async asyncpg URL."""
     if url.startswith("postgresql://"):
@@ -27,13 +27,15 @@ def _build_async_url(url: str) -> str:
 
 ASYNC_DATABASE_URL = _build_async_url(settings.database_url)
 
-# Create the async engine
+# Create the async engine — NullPool + statement_cache_size=0 required for PgBouncer
 engine = create_async_engine(
     ASYNC_DATABASE_URL,
-    echo=settings.environment == "development",  # log SQL in dev
-    pool_pre_ping=True,                           # verify connections before use
-    pool_size=10,
-    max_overflow=20,
+    echo=settings.environment == "development",
+    poolclass=NullPool,          # Let PgBouncer manage the pool, not SQLAlchemy
+    connect_args={
+        "statement_cache_size": 0,          # Disable asyncpg prepared statement cache
+        "prepared_statement_cache_size": 0, # Belt-and-suspenders for older asyncpg
+    },
 )
 
 # Session factory
@@ -55,11 +57,6 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """
     FastAPI dependency that provides an async DB session.
     Yields a session and guarantees it is closed after the request.
-
-    Usage:
-        @router.get("/example")
-        async def endpoint(db: AsyncSession = Depends(get_db)):
-            ...
     """
     async with AsyncSessionLocal() as session:
         try:
@@ -75,7 +72,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
 async def create_all_tables():
     """
     Create all tables defined via ORM models.
-    Called on app startup in development. In production, use schema.sql on Supabase.
+    Called on app startup. In production, prefer running schema.sql directly on Supabase.
     """
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

@@ -56,6 +56,7 @@ export default function App() {
           - Footer at bottom
         */}
         <div className="flex flex-col min-h-screen">
+
           <Navbar />
 
           <main className="flex-1">
@@ -74,7 +75,9 @@ export default function App() {
           </main>
 
           <Footer />
+          
         </div>
+        <div>hello</div>
       </SelectionProvider>
     </BrowserRouter>
   );

@@ -22,7 +22,7 @@ from app.config import settings
 logger = logging.getLogger(__name__)
 
 # ── Gemini client initialisation ──────────────────────────────────────────────
-genai.configure(api_key=settings.GEMINI_API_KEY)
+genai.configure(api_key=settings.gemini_api_key)
 _model = genai.GenerativeModel("gemini-1.5-flash")
 
 # ── Retry configuration ───────────────────────────────────────────────────────

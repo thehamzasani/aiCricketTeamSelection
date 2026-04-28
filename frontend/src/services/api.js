@@ -216,6 +216,24 @@ export const adminAPI = {
   precacheStats: (teamName) =>
     unwrap(api.post(`/api/admin/precache/${encodeURIComponent(teamName)}`)),
 };
+export const fetchVenues = async () => {
+  const { data } = await api.get("/api/venues");
+  return data;
+};
 
+export const fetchSquad = async (teamName) => {
+  const { data } = await api.get(`/api/squads/${teamName}`);
+  return data;
+};
+
+export const generateSelection = async (payload) => {
+  const { data } = await api.post("/api/selection/generate", payload);
+  return data;
+};
+
+export const getSelectionById = async (id) => {
+  const response = await apiClient.get(`/api/history/${id}`);
+  return response.data;
+};
 // ── Named export of raw instance (for custom calls) ───────────────────────────
-export default api;
+export { api };

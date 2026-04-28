@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import api from "../services/api";
+import {api} from "../services/api";
 
 // ─── Animated Cricket Ball SVG ───────────────────────────────────────────────
 function CricketBallIcon({ size = 24, className = "" }) {
