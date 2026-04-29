@@ -21,14 +21,11 @@ from app.models import player, squad, venue, selection as selection_model  # noq
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    Application lifespan handler.
-    On startup: create all DB tables (safe — skips existing tables).
-    On shutdown: dispose DB connection pool.
+    Startup: just verify the engine can be imported.
+    Table creation is handled by running schema.sql on Supabase directly.
+    Shutdown: dispose connection pool.
     """
-    async with engine.begin() as conn:
-        # Creates tables that don't exist yet — safe to run on every startup
-        await conn.run_sync(Base.metadata.create_all)
-    print("✅ Database tables verified / created.")
+    print("✅ CricketAI API starting up.")
     yield
     await engine.dispose()
     print("🛑 Database connection pool closed.")

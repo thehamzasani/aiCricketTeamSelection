@@ -2,7 +2,6 @@
 Pydantic v2 schemas for the AI selection response returned by
 POST /api/selection/generate and GET /api/history/{id}.
 """
-
 from __future__ import annotations
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -50,6 +49,14 @@ class BowlerAllocation(BaseModel):
     economy_rate: Optional[float] = None
 
 
+class VenueInfo(BaseModel):
+    """Minimal venue info embedded in history detail."""
+    id: int
+    name: str
+    city: str
+    country: str
+
+
 # ---------------------------------------------------------------------------
 # Main response schemas
 # ---------------------------------------------------------------------------
@@ -83,7 +90,7 @@ class SelectionHistoryItem(BaseModel):
     """
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    id: int                          # ← must be 'id', not 'selection_id'
     format: str
     team_name: str
     opposition: str
@@ -100,15 +107,16 @@ class SelectionDetail(BaseModel):
     """
     model_config = ConfigDict(from_attributes=True)
 
-    id: int
+    id: int                          # ← must be 'id', not 'selection_id'
     format: str
     team_name: str
     opposition: str
     venue_id: Optional[int] = None
+    venue: Optional[VenueInfo] = None   # ← nested venue object
     pitch_type: Optional[str] = None
     weather: Optional[str] = None
     toss_decision: Optional[str] = None
-    selected_xi: List[Any]
+    selected_xi: List[Any] = []
     batting_order: Optional[List[Any]] = None
     bowling_combination: Optional[List[Any]] = None
     captain_id: Optional[int] = None

@@ -42,6 +42,19 @@ function ContextBadge({ icon, label, value }) {
 }
 
 /**
+ * Computes team balance from selected_xi array.
+ * Used as fallback when team_balance is not returned by the API (e.g. history endpoint).
+ */
+function computeTeamBalance(players = []) {
+  return {
+    batsmen: players.filter((p) => p.role === "batsman").length,
+    allrounders: players.filter((p) => p.role === "allrounder").length,
+    bowlers: players.filter((p) => p.role === "bowler").length,
+    wicketkeeper: players.filter((p) => p.role === "wicketkeeper").length,
+  };
+}
+
+/**
  * TeamResultDashboard — main container for the selection result.
  * Renders the match context bar, team balance summary, and all 4 result sections.
  */
@@ -56,7 +69,6 @@ export default function TeamResultDashboard({ selection }) {
     vice_captain,
     ai_analysis,
     ai_strategy,
-    team_balance = {},
     format,
     team_name,
     opposition,
@@ -65,11 +77,30 @@ export default function TeamResultDashboard({ selection }) {
     weather,
     toss_decision,
     created_at,
-    selection_id,
   } = selection;
 
-  const pitchInfo = PITCH_LABELS[pitch_type] || { label: pitch_type, icon: "🏏" };
-  const weatherInfo = WEATHER_LABELS[weather] || { label: weather, icon: "🌤️" };
+  // ── Support both fresh generate (selection_id) and history (id) ──────────
+  const selectionId = selection.selection_id ?? selection.id ?? "—";
+
+  // ── Compute team_balance from XI if API didn't return it ─────────────────
+  const team_balance =
+    selection.team_balance && Object.keys(selection.team_balance).length > 0
+      ? selection.team_balance
+      : computeTeamBalance(selected_xi);
+
+  // ── Captain: support both object form and player_id lookup ───────────────
+  const resolvedCaptain =
+    captain ??
+    selected_xi.find((p) => p.is_captain) ??
+    null;
+
+  const resolvedViceCaptain =
+    vice_captain ??
+    selected_xi.find((p) => p.is_vice_captain) ??
+    null;
+
+  const pitchInfo = PITCH_LABELS[pitch_type] || { label: pitch_type || "—", icon: "🏏" };
+  const weatherInfo = WEATHER_LABELS[weather] || { label: weather || "—", icon: "🌤️" };
 
   const formattedDate = created_at
     ? new Date(created_at).toLocaleDateString("en-GB", {
@@ -79,6 +110,24 @@ export default function TeamResultDashboard({ selection }) {
       })
     : "—";
 
+  // ── Batting order: prefer batting_order, fall back to selected_xi sorted ──
+  const displayBattingOrder =
+    batting_order.length > 0
+      ? [...batting_order].sort(
+          (a, b) => (a.batting_position ?? 99) - (b.batting_position ?? 99)
+        )
+      : [...selected_xi].sort(
+          (a, b) => (a.batting_position ?? 99) - (b.batting_position ?? 99)
+        );
+
+  // ── Bowling combination: prefer bowling_combination, fall back to XI ──────
+  const displayBowlers =
+    bowling_combination.length > 0
+      ? bowling_combination
+      : selected_xi.filter(
+          (p) => p.role === "bowler" || p.role === "allrounder"
+        );
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 md:py-12">
 
@@ -86,12 +135,12 @@ export default function TeamResultDashboard({ selection }) {
       <div className="mb-8 flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
         <div>
           <p className="text-[#10B981] text-xs font-['DM_Sans'] uppercase tracking-widest mb-1">
-            AI SELECTION #{selection_id}
+            AI SELECTION #{selectionId}
           </p>
           <h1 className="text-4xl md:text-5xl font-['Bebas_Neue'] tracking-wide text-[#F9FAFB]">
-            {team_name}{" "}
+            {team_name || "—"}{" "}
             <span className="text-[#4B5563]">VS</span>{" "}
-            {opposition}
+            {opposition || "—"}
           </h1>
           <p className="text-[#9CA3AF] font-['DM_Sans'] text-sm mt-1">
             {formattedDate}
@@ -116,30 +165,18 @@ export default function TeamResultDashboard({ selection }) {
       {/* ── Match Context Bar ── */}
       <div className="bg-[#111827] border border-[#1E293B] rounded-2xl p-4 md:p-6 mb-8">
         <div className="flex flex-wrap gap-3">
-          <ContextBadge
-            icon="🏆"
-            label="Format"
-            value={format}
-          />
-          <ContextBadge
-            icon="📍"
-            label="Venue"
-            value={venue?.name || "—"}
-          />
-          <ContextBadge
-            icon={pitchInfo.icon}
-            label="Pitch"
-            value={pitchInfo.label}
-          />
-          <ContextBadge
-            icon={weatherInfo.icon}
-            label="Weather"
-            value={weatherInfo.label}
-          />
+          <ContextBadge icon="🏆" label="Format" value={format || "—"} />
+          <ContextBadge icon="📍" label="Venue" value={venue?.name || "—"} />
+          <ContextBadge icon={pitchInfo.icon} label="Pitch" value={pitchInfo.label} />
+          <ContextBadge icon={weatherInfo.icon} label="Weather" value={weatherInfo.label} />
           <ContextBadge
             icon="🪙"
             label="Toss"
-            value={`${team_name} — ${toss_decision === "bat" ? "Batting" : "Bowling"}`}
+            value={
+              team_name && toss_decision
+                ? `${team_name} — ${toss_decision === "bat" ? "Batting" : "Bowling"}`
+                : "—"
+            }
           />
         </div>
       </div>
@@ -147,10 +184,10 @@ export default function TeamResultDashboard({ selection }) {
       {/* ── Team Balance Pills ── */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
         {[
-          { label: "Batsmen", value: team_balance.batsmen ?? "—", color: "emerald" },
-          { label: "All-Rounders", value: team_balance.allrounders ?? "—", color: "amber" },
-          { label: "Bowlers", value: team_balance.bowlers ?? "—", color: "blue" },
-          { label: "Wicketkeeper", value: team_balance.wicketkeeper ?? "—", color: "purple" },
+          { label: "Batsmen",      value: team_balance.batsmen,      color: "emerald" },
+          { label: "All-Rounders", value: team_balance.allrounders,  color: "amber"   },
+          { label: "Bowlers",      value: team_balance.bowlers,      color: "blue"    },
+          { label: "Wicketkeeper", value: team_balance.wicketkeeper, color: "purple"  },
         ].map(({ label, value, color }) => (
           <div
             key={label}
@@ -158,16 +195,14 @@ export default function TeamResultDashboard({ selection }) {
           >
             <p
               className={`font-['JetBrains_Mono'] text-3xl font-bold ${
-                color === "emerald"
-                  ? "text-emerald-400"
-                  : color === "amber"
-                  ? "text-amber-400"
-                  : color === "blue"
-                  ? "text-blue-400"
-                  : "text-purple-400"
+                color === "emerald" ? "text-emerald-400"
+                : color === "amber"   ? "text-amber-400"
+                : color === "blue"    ? "text-blue-400"
+                :                       "text-purple-400"
               }`}
             >
-              {value}
+              {/* Show 0 explicitly, only fallback to — if truly undefined */}
+              {value ?? "—"}
             </p>
             <p className="text-[#9CA3AF] font-['DM_Sans'] text-xs mt-1 uppercase tracking-wider">
               {label}
@@ -181,12 +216,12 @@ export default function TeamResultDashboard({ selection }) {
         {/* Left column */}
         <div className="flex flex-col gap-6">
           <BattingOrder
-            battingOrder={batting_order.length > 0 ? batting_order : selected_xi}
-            captain={captain}
-            viceCaptain={vice_captain}
+            battingOrder={displayBattingOrder}
+            captain={resolvedCaptain}
+            viceCaptain={resolvedViceCaptain}
           />
           <BowlingPlan
-            bowlers={bowling_combination.length > 0 ? bowling_combination : selected_xi.filter(p => p.role === "bowler" || p.role === "allrounder")}
+            bowlers={displayBowlers}
             format={format}
           />
         </div>
@@ -195,7 +230,7 @@ export default function TeamResultDashboard({ selection }) {
           <AIAnalysis
             analysis={ai_analysis}
             strategy={ai_strategy}
-            captain={captain}
+            captain={resolvedCaptain}
             format={format}
           />
         </div>

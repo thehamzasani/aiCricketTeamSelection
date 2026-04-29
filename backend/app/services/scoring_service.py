@@ -66,6 +66,7 @@ class MatchContext:
     toss_decision: str # bat / bowl
     venue_name: str = ""
     opposition: str = ""
+    team_name: str = ""  # ← add this line
 
 
 # ---------------------------------------------------------------------------

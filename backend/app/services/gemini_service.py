@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 # ── Gemini client initialisation ──────────────────────────────────────────────
 genai.configure(api_key=settings.gemini_api_key)
-_model = genai.GenerativeModel("gemini-1.5-flash")
+_model = genai.GenerativeModel("gemini-pro")
 
 # ── Retry configuration ───────────────────────────────────────────────────────
 MAX_RETRIES = 2
