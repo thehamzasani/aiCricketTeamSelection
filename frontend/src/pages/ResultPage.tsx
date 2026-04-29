@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { getSelectionById } from "../services/api";
+import { historyAPI } from "../services/api";
 import TeamResultDashboard from "../components/results/TeamResultDashboard";
 import LoadingSpinner from "../components/ui/LoadingSpinner";
 
@@ -16,27 +16,26 @@ export default function ResultPage() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    /**
-     * Fetches selection data from the backend on mount.
-     * Falls back to a friendly error message on failure.
-     */
-    const fetchSelection = async () => {
-      try {
-        setLoading(true);
-        const data = await getSelectionById(id);
-        setSelection(data);
-      } catch (err) {
-        setError(
-          (err as any)?.response?.data?.detail ||
-            "Failed to load selection. Please try again."
-        );
-      } finally {
-        setLoading(false);
-      }
-    };
+  if (!id) return; // guard against undefined
 
-    fetchSelection();
-  }, [id]);
+  const fetchSelection = async () => {
+    try {
+      setLoading(true);
+      const data = await historyAPI.getSelectionById(Number(id)); // parse to number
+      setSelection(data);
+    } catch (err) {
+      const error = err as any;
+      setError(
+        error?.response?.data?.detail ||
+          "Failed to load selection. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  fetchSelection();
+}, [id]);
 
   if (loading) {
     return (

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import {api} from "../services/api";
+import { historyAPI } from "../services/api";
 
 // ─── Animated Cricket Ball SVG ───────────────────────────────────────────────
 function CricketBallIcon({ size = 24, className = "" }) {
@@ -118,9 +118,8 @@ function FormatBadge({ format }) {
   };
   return (
     <span
-      className={`text-xs font-mono font-bold px-2 py-0.5 rounded-md border ${
-        colors[format] || "bg-gray-500/20 text-gray-400 border-gray-500/30"
-      }`}
+      className={`text-xs font-mono font-bold px-2 py-0.5 rounded-md border ${colors[format] || "bg-gray-500/20 text-gray-400 border-gray-500/30"
+        }`}
     >
       {format}
     </span>
@@ -232,8 +231,8 @@ export default function HomePage() {
       try {
         setLoadingHistory(true);
         setHistoryError(false);
-        const res = await api.get("/api/history?limit=3");
-        setRecentSelections(res.data || []);
+        const data = await historyAPI.getHistory({ limit: 3 });
+        setRecentSelections(data || []);
       } catch (err) {
         console.error("Failed to fetch history:", err);
         setHistoryError(true);

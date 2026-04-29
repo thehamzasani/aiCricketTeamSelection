@@ -3,7 +3,7 @@ import { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import MatchSetupForm from "../components/forms/MatchSetupForm";
 import PlayerSelector from "../components/forms/PlayerSelector";
-import { generateSelection } from "../services/api";
+import { selectionAPI } from "../services/api";
 
 /**
  * SelectTeamPage — two-column layout page for match setup and player selection.
@@ -51,12 +51,12 @@ export default function SelectTeamPage() {
         available_player_ids: selectedIds,
       };
 
-      const result = await generateSelection(payload);
+      const result = await selectionAPI.generateXI(payload);
       navigate(`/result/${result.selection_id}`);
     } catch (err) {
       setError(
         err?.response?.data?.detail ||
-          "Failed to generate team. Please try again."
+        "Failed to generate team. Please try again."
       );
       setIsGenerating(false);
     }

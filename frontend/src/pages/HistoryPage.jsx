@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../services/api";
+import { historyAPI } from "../services/api";
 import LoadingSpinner from "../components/ui/LoadingSpinner";
 
 // ─────────────────────────────────────────────
@@ -60,9 +60,8 @@ function HistoryCard({ selection, onClick }) {
           </h3>
         </div>
         <span
-          className={`px-3 py-1 rounded-full text-xs font-bold font-mono tracking-wider flex-shrink-0 ${
-            FORMAT_STYLES[format] ?? "bg-[#1E293B] text-[#9CA3AF]"
-          }`}
+          className={`px-3 py-1 rounded-full text-xs font-bold font-mono tracking-wider flex-shrink-0 ${FORMAT_STYLES[format] ?? "bg-[#1E293B] text-[#9CA3AF]"
+            }`}
         >
           {format}
         </span>
@@ -206,7 +205,7 @@ export default function HistoryPage() {
       try {
         setLoading(true);
         setError(null);
-        const data = await api.getHistory(); // GET /api/history
+        const data = await historyAPI.getHistory();
         setSelections(data);
       } catch (err) {
         setError("Failed to load selection history. Please try again.");
@@ -281,10 +280,9 @@ export default function HistoryPage() {
                 key={f}
                 onClick={() => setActiveFormat(f)}
                 className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all duration-150
-                  ${
-                    activeFormat === f
-                      ? "bg-emerald-500 text-white"
-                      : "text-[#9CA3AF] hover:text-white"
+                  ${activeFormat === f
+                    ? "bg-emerald-500 text-white"
+                    : "text-[#9CA3AF] hover:text-white"
                   }`}
               >
                 {f}
