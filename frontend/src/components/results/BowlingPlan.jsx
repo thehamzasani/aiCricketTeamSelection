@@ -20,7 +20,7 @@ function getTotalOvers(format) {
  * BowlerRow — a single bowler entry with an animated over allocation bar.
  */
 function BowlerRow({ bowler, maxOvers, totalOvers, index }) {
-  const overs = bowler.overs_allocated ?? maxOvers;
+  const overs = bowler.suggested_overs ?? bowler.overs_allocated ?? maxOvers;
   const economy = bowler.bowling_economy ?? null;
   const pct = Math.min((overs / totalOvers) * 100, 100);
 
@@ -98,8 +98,8 @@ export default function BowlingPlan({ bowlers = [], format = "T20" }) {
 
   // Filter to only players who can bowl
   const bowlingPlayers = bowlers.filter(
-    (p) => p.role === "bowler" || p.role === "allrounder"
-  );
+  (p) => p.role === "bowler" || p.role === "allrounder" || p.suggested_overs != null
+);
 
   return (
     <div className="bg-[#111827] border border-[#1E293B] rounded-2xl p-6 md:p-8">
