@@ -24,10 +24,15 @@ export default {
           muted: "#4B5563",    // very muted
         },
       },
+      // fontFamily: {
+      //   display: ["'Bebas Neue'", "cursive"],   // headings, hero
+      //   body: ["'DM Sans'", "sans-serif"],      // body text, UI
+      //   mono: ["'JetBrains Mono'", "monospace"],// stats, numbers
+      // },
       fontFamily: {
-        display: ["'Bebas Neue'", "cursive"],   // headings, hero
-        body: ["'DM Sans'", "sans-serif"],      // body text, UI
-        mono: ["'JetBrains Mono'", "monospace"],// stats, numbers
+        display: ["'Rajdhani'", "sans-serif"],
+        body: ["'Inter'", "sans-serif"],
+        mono: ["'JetBrains Mono'", "monospace"],
       },
       backgroundImage: {
         "hero-gradient": "linear-gradient(135deg, #0A0F1E 0%, #0D1B2A 50%, #0A1628 100%)",
