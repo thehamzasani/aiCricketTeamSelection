@@ -1,149 +1,116 @@
 """
-FastAPI application entry point.
-- Configures CORS for frontend access
-- Registers all API routers
-- Startup event: verifies DB connectivity and creates tables if needed
-- Health check endpoint at GET /
+main.py — FastAPI application entry point.
+Serves static player images from backend/static/player_images/
 """
-
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+import os
+
+from fastapi import APIRouter, Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
-from app.database import engine, Base
-from app.routers import players, squads, selection, history
+from app.database import engine, get_db
+from app.routers import history, players, selection, squads
+from app.models import player, squad, venue  # noqa: F401
+from app.models import selection as selection_model  # noqa: F401
+from app.models.venue import Venue
 
-# ── Optional: import all models here so SQLAlchemy registers them before create_all ──
-from app.models import player, squad, venue, selection as selection_model  # noqa: F401
+# Ensure the static images folder exists on startup
+IMAGES_DIR = os.path.join(os.path.dirname(__file__), "..", "static", "player_images")
+os.makedirs(IMAGES_DIR, exist_ok=True)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Startup: just verify the engine can be imported.
-    Table creation is handled by running schema.sql on Supabase directly.
-    Shutdown: dispose connection pool.
-    """
     print("✅ CricketAI API starting up.")
     yield
     await engine.dispose()
     print("🛑 Database connection pool closed.")
 
 
-# ── FastAPI app ────────────────────────────────────────────────────────────────
 app = FastAPI(
     title="CricketAI — Team Selection API",
-    description="AI-powered cricket team selection backend using FastAPI, PostgreSQL, CricAPI, and Google Gemini.",
     version="1.0.0",
     lifespan=lifespan,
 )
 
-# ── CORS ───────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Static files — serves /static/player_images/filename.jpg
+# ---------------------------------------------------------------------------
+static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
+os.makedirs(static_dir, exist_ok=True)
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+# ---------------------------------------------------------------------------
+# CORS
+# ---------------------------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        settings.frontend_url ,          # e.g. http://localhost:5173
-        "https://*.vercel.app",         # deployed Vercel previews
-        "https://cricketai.vercel.app", # your production Vercel URL (update this)
+        settings.frontend_url,
+        "https://*.vercel.app",
+        "https://cricketai.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ── Routers ────────────────────────────────────────────────────────────────────
+# ---------------------------------------------------------------------------
+# Core routers
+# ---------------------------------------------------------------------------
 app.include_router(players.router)
 app.include_router(squads.router)
 app.include_router(selection.router)
 app.include_router(history.router)
 
-# ── Venue router (inline — simple enough to not need its own file) ────────────
-from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from app.database import get_db
-from app.models.venue import Venue
-from fastapi import APIRouter
-
+# ---------------------------------------------------------------------------
+# Venues router (inline)
+# ---------------------------------------------------------------------------
 venue_router = APIRouter(prefix="/api/venues", tags=["Venues"])
+
 
 @venue_router.get("")
 async def list_venues(db: AsyncSession = Depends(get_db)):
-    """Return all venues from the DB."""
     result = await db.execute(select(Venue).order_by(Venue.country, Venue.name))
-    venues = result.scalars().all()
-    return venues
+    return result.scalars().all()
+
 
 @venue_router.get("/{venue_id}")
 async def get_venue(venue_id: int, db: AsyncSession = Depends(get_db)):
-    """Return a single venue by ID."""
     result = await db.execute(select(Venue).where(Venue.id == venue_id))
-    venue = result.scalar_one_or_none()
-    if not venue:
-        from fastapi import HTTPException
+    v = result.scalar_one_or_none()
+    if not v:
         raise HTTPException(status_code=404, detail=f"Venue {venue_id} not found.")
-    return venue
+    return v
+
 
 app.include_router(venue_router)
 
-# ── Admin / Dev endpoints ──────────────────────────────────────────────────────
-from fastapi import BackgroundTasks
-
+# ---------------------------------------------------------------------------
+# Admin router
+# ---------------------------------------------------------------------------
 admin_router = APIRouter(prefix="/api/admin", tags=["Admin"])
+
 
 @admin_router.post("/seed")
 async def seed_database(db: AsyncSession = Depends(get_db)):
-    """
-    Seed the database with initial squads and venues.
-    Run once in development. Safe to call multiple times (uses upsert logic in seed script).
-    """
     from app.seed.seed_data import run_seed
     await run_seed(db)
     return {"message": "✅ Database seeded successfully."}
 
-@admin_router.post("/precache/{team_name}")
-async def precache_team_stats(
-    team_name: str,
-    background_tasks: BackgroundTasks,
-    format: str = "T20",
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Pre-cache CricAPI stats for all players in a squad.
-    Runs as a background task — returns immediately.
-    Use this the night before a demo to warm the cache.
-    """
-    from app.models.squad import Squad
-    from app.services.cricapi_service import fetch_player_stats
-
-    result = await db.execute(
-        select(player.Player)
-        .join(Squad, Squad.player_id == player.Player.id)
-        .where(Squad.team_name.ilike(team_name))
-    )
-    players_list = result.scalars().all()
-
-    async def _cache_all():
-        for p in players_list:
-            try:
-                await fetch_player_stats(p.id, p.cricapi_id, format, db)
-            except Exception as e:
-                print(f"⚠️  Pre-cache failed for {p.name}: {e}")
-
-    background_tasks.add_task(_cache_all)
-    return {
-        "message": f"🔄 Pre-caching {len(players_list)} players for {team_name} ({format}) in background."
-    }
 
 app.include_router(admin_router)
 
-# ── Health check ───────────────────────────────────────────────────────────────
+
 @app.get("/", tags=["Health"])
 async def root():
-    """Health check — confirms API is running."""
     return {
         "status": "✅ CricketAI API is running",
         "version": "1.0.0",
         "docs": "/docs",
+        "environment": settings.environment,
     }

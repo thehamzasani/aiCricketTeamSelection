@@ -1,54 +1,115 @@
 """
 routers/players.py
 ------------------
-Player management endpoints:
-  GET    /api/players                        → list all active players (filterable)
-  POST   /api/players                        → create a new player
-  PUT    /api/players/{player_id}            → update player info
-  DELETE /api/players/{player_id}            → soft delete (is_active = False)
-  GET    /api/players/{player_id}/stats      → fetch stats (cached via CricAPI service)
-  POST   /api/players/{player_id}/stats      → upsert stats for a given format
-  POST   /api/players/{player_id}/assign-squad → assign player to a squad
+GET    /api/players                          → list all active players
+POST   /api/players                          → create a new player
+PUT    /api/players/{player_id}              → update player info
+DELETE /api/players/{player_id}              → soft delete
+GET    /api/players/{player_id}/stats        → fetch stats from DB
+POST   /api/players/{player_id}/stats        → upsert stats for a format
+POST   /api/players/{player_id}/assign-squad → assign to a squad
+POST   /api/players/{player_id}/upload-image → save image to local static folder
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, and_
-from sqlalchemy.orm import selectinload
-from typing import Optional, List
+import os
+import uuid
 from datetime import datetime
+from typing import List, Optional
+
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from sqlalchemy import and_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.database import get_db
 from app.models.player import Player, PlayerStats
 from app.models.squad import Squad
 from app.schemas.player import (
+    PlayerCreate,
     PlayerResponse,
     PlayerStatsResponse,
-    PlayerCreate,
-    PlayerUpdate,
     PlayerStatsUpsert,
+    PlayerUpdate,
     SquadAssign,
 )
 
 router = APIRouter(prefix="/api/players", tags=["Players"])
 
+# ---------------------------------------------------------------------------
+# Image upload config
+# ---------------------------------------------------------------------------
+
+# Absolute path to backend/static/player_images/
+IMAGES_DIR = os.path.join(
+    os.path.dirname(__file__), "..", "..", "static", "player_images"
+)
+os.makedirs(IMAGES_DIR, exist_ok=True)
+
+ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
+
 
 # ---------------------------------------------------------------------------
-# GET /api/players — list all active players
+# Scoring helper
+# ---------------------------------------------------------------------------
+
+def _quick_score(player: Player, stats) -> float:
+    """Lightweight scoring for list views — T20/balanced defaults."""
+    if not stats:
+        return 0.0
+    score = 0.0
+    if stats.batting_avg:
+        score += min(float(stats.batting_avg) * 0.5, 20.0)
+    if stats.strike_rate:
+        score += min(max((float(stats.strike_rate) - 100) * 0.15, 0), 15.0)
+    if stats.wickets_total:
+        score += min(float(stats.wickets_total) * 0.10, 10.0)
+    if stats.bowling_economy:
+        score += min(max((10 - float(stats.bowling_economy)) * 2, 0), 15.0)
+    if stats.recent_form:
+        weights = [0.35, 0.25, 0.20, 0.12, 0.08]
+        form = stats.recent_form[:5]
+        w = weights[: len(form)]
+        ws = sum(w)
+        form_score = sum(r * (wi / ws) for r, wi in zip(form, w))
+        score += min(form_score / 10, 20.0)
+    return min(score, 100.0)
+
+
+def _build_player_response(p: Player) -> PlayerResponse:
+    """Build PlayerResponse from ORM object (stats must be eagerly loaded)."""
+    stats_map = {s.format: s for s in (p.stats or [])}
+    active_stats = (
+        stats_map.get("T20")
+        or stats_map.get("ODI")
+        or stats_map.get("Test")
+    )
+    return PlayerResponse(
+        id=p.id,
+        name=p.name,
+        country=p.country,
+        role=p.role,
+        batting_style=p.batting_style,
+        bowling_style=p.bowling_style,
+        cricapi_id=p.cricapi_id,
+        image_url=p.image_url,
+        is_active=p.is_active,
+        overall_score=round(_quick_score(p, active_stats), 1),
+        stats=[PlayerStatsResponse.model_validate(s) for s in (p.stats or [])],
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /api/players
 # ---------------------------------------------------------------------------
 
 @router.get("", response_model=List[PlayerResponse])
 async def list_players(
-    country: Optional[str] = Query(None, description="Filter by country"),
-    role: Optional[str] = Query(None, description="Filter by role"),
+    country: Optional[str] = Query(None),
+    role: Optional[str] = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Return all active players from the DB.
-    Eagerly loads stats to avoid async lazy-load errors.
-    Optionally filter by country and/or role.
-    Computes overall_score as a simple composite for the UI score meter.
-    """
+    """Return all active players with stats and computed overall_score."""
     query = (
         select(Player)
         .options(selectinload(Player.stats))
@@ -60,77 +121,11 @@ async def list_players(
         query = query.where(Player.role.ilike(f"%{role}%"))
 
     result = await db.execute(query)
-    players = result.scalars().all()
-
-    # Build response list — attach a denormalised overall_score and primary stats
-    response = []
-    for p in players:
-        # Pick T20 stats first, fall back to ODI, then Test, then None
-        stats_map = {s.format: s for s in (p.stats or [])}
-        active_stats = (
-            stats_map.get("T20")
-            or stats_map.get("ODI")
-            or stats_map.get("Test")
-        )
-
-        # Compute a simplified overall score so the UI score meter works
-        overall_score = _quick_score(p, active_stats)
-
-        response.append(
-            PlayerResponse(
-                id=p.id,
-                name=p.name,
-                country=p.country,
-                role=p.role,
-                batting_style=p.batting_style,
-                bowling_style=p.bowling_style,
-                cricapi_id=p.cricapi_id,
-                image_url=p.image_url,
-                is_active=p.is_active,
-                overall_score=round(overall_score, 1),
-                stats=[
-                    PlayerStatsResponse.model_validate(s)
-                    for s in (p.stats or [])
-                ],
-            )
-        )
-
-    return response
-
-
-def _quick_score(player: Player, stats) -> float:
-    """
-    Lightweight version of scoring_service.calculate_player_score for list views.
-    Uses T20 defaults with a balanced pitch so every player gets a comparable score.
-    Full scoring happens in selection_service only.
-    """
-    if not stats:
-        return 0.0
-
-    score = 0.0
-    # Batting
-    if stats.batting_avg:
-        score += min(float(stats.batting_avg) * 0.5, 20.0)
-    if stats.strike_rate:
-        score += min(max((float(stats.strike_rate) - 100) * 0.15, 0), 15.0)
-    # Bowling
-    if stats.wickets_total:
-        score += min(float(stats.wickets_total) * 0.10, 10.0)
-    if stats.bowling_economy:
-        score += min(max((10 - float(stats.bowling_economy)) * 2, 0), 15.0)
-    # Recent form
-    if stats.recent_form:
-        weights = [0.35, 0.25, 0.20, 0.12, 0.08]
-        form = stats.recent_form[:5]
-        w = weights[: len(form)]
-        ws = sum(w)
-        form_score = sum(r * (wi / ws) for r, wi in zip(form, w))
-        score += min(form_score / 10, 20.0)
-    return min(score, 100.0)
+    return [_build_player_response(p) for p in result.scalars().all()]
 
 
 # ---------------------------------------------------------------------------
-# POST /api/players — create a new player
+# POST /api/players
 # ---------------------------------------------------------------------------
 
 @router.post("", response_model=PlayerResponse, status_code=201)
@@ -138,11 +133,7 @@ async def create_player(
     payload: PlayerCreate,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Insert a new player row.
-    Returns the created player with an empty stats list.
-    """
-    # Prevent duplicate names (case-insensitive) for the same country
+    """Insert a new player row."""
     existing = await db.execute(
         select(Player).where(
             and_(
@@ -168,7 +159,7 @@ async def create_player(
         is_active=True,
     )
     db.add(new_player)
-    await db.flush()   # get the generated ID before commit
+    await db.flush()
     await db.refresh(new_player)
 
     return PlayerResponse(
@@ -187,7 +178,7 @@ async def create_player(
 
 
 # ---------------------------------------------------------------------------
-# PUT /api/players/{player_id} — update player info
+# PUT /api/players/{player_id}
 # ---------------------------------------------------------------------------
 
 @router.put("/{player_id}", response_model=PlayerResponse)
@@ -196,10 +187,7 @@ async def update_player(
     payload: PlayerUpdate,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Partially update a player's profile fields.
-    Only provided (non-None) fields are updated.
-    """
+    """Partially update a player's profile fields."""
     result = await db.execute(
         select(Player)
         .options(selectinload(Player.stats))
@@ -209,36 +197,16 @@ async def update_player(
     if not player:
         raise HTTPException(status_code=404, detail=f"Player {player_id} not found.")
 
-    update_data = payload.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
+    for field, value in payload.model_dump(exclude_unset=True).items():
         setattr(player, field, value)
 
     await db.flush()
     await db.refresh(player)
-
-    overall_score = _quick_score(
-        player,
-        next((s for s in player.stats if s.format == "T20"), None)
-        or (player.stats[0] if player.stats else None),
-    )
-
-    return PlayerResponse(
-        id=player.id,
-        name=player.name,
-        country=player.country,
-        role=player.role,
-        batting_style=player.batting_style,
-        bowling_style=player.bowling_style,
-        cricapi_id=player.cricapi_id,
-        image_url=player.image_url,
-        is_active=player.is_active,
-        overall_score=round(overall_score, 1),
-        stats=[PlayerStatsResponse.model_validate(s) for s in player.stats],
-    )
+    return _build_player_response(player)
 
 
 # ---------------------------------------------------------------------------
-# DELETE /api/players/{player_id} — soft delete
+# DELETE /api/players/{player_id}
 # ---------------------------------------------------------------------------
 
 @router.delete("/{player_id}", status_code=200)
@@ -246,10 +214,7 @@ async def delete_player(
     player_id: int,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Soft-delete a player by setting is_active = False.
-    The row is retained for historical selection records.
-    """
+    """Soft-delete by setting is_active = False."""
     result = await db.execute(select(Player).where(Player.id == player_id))
     player = result.scalar_one_or_none()
     if not player:
@@ -261,51 +226,37 @@ async def delete_player(
 
 
 # ---------------------------------------------------------------------------
-# GET /api/players/{player_id}/stats — fetch cached stats
+# GET /api/players/{player_id}/stats
 # ---------------------------------------------------------------------------
 
 @router.get("/{player_id}/stats", response_model=PlayerStatsResponse)
 async def get_player_stats(
     player_id: int,
-    format: str = Query("T20", description="Match format: T20 / ODI / Test"),
+    format: str = Query("T20"),
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Fetch stats for a single player in a given format from DB cache.
-    Falls back to CricAPI fetch if the player has a cricapi_id and cache is stale.
-    """
+    """Fetch stats for a single player in a given format from the DB."""
     result = await db.execute(select(Player).where(Player.id == player_id))
     player = result.scalar_one_or_none()
     if not player:
         raise HTTPException(status_code=404, detail=f"Player {player_id} not found.")
 
-    # Check DB cache first
     stats_result = await db.execute(
         select(PlayerStats).where(
             and_(PlayerStats.player_id == player_id, PlayerStats.format == format)
         )
     )
     stats = stats_result.scalar_one_or_none()
-
-    # If player has a cricapi_id, try live fetch (service handles 24-hr cache)
-    if not stats and player.cricapi_id:
-        try:
-            from app.services.cricapi_service import fetch_player_stats
-            stats = await fetch_player_stats(player_id, player.cricapi_id, format, db)
-        except Exception as e:
-            print(f"⚠️ CricAPI fetch failed for {player.name}: {e}")
-
     if not stats:
         raise HTTPException(
             status_code=404,
             detail=f"No {format} stats found for {player.name}. Add stats manually.",
         )
-
     return PlayerStatsResponse.model_validate(stats)
 
 
 # ---------------------------------------------------------------------------
-# POST /api/players/{player_id}/stats — upsert stats for a format
+# POST /api/players/{player_id}/stats
 # ---------------------------------------------------------------------------
 
 @router.post("/{player_id}/stats", response_model=PlayerStatsResponse, status_code=200)
@@ -314,18 +265,11 @@ async def upsert_player_stats(
     payload: PlayerStatsUpsert,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Create or update stats for a player in a specific format (T20 / ODI / Test).
-    Uses upsert logic: if a row exists for (player_id, format), update it;
-    otherwise insert a new row.
-    """
-    # Verify player exists
+    """Create or update stats for a player in a specific format."""
     player_result = await db.execute(select(Player).where(Player.id == player_id))
-    player = player_result.scalar_one_or_none()
-    if not player:
+    if not player_result.scalar_one_or_none():
         raise HTTPException(status_code=404, detail=f"Player {player_id} not found.")
 
-    # Try to find existing stats row
     stats_result = await db.execute(
         select(PlayerStats).where(
             and_(
@@ -337,13 +281,11 @@ async def upsert_player_stats(
     stats = stats_result.scalar_one_or_none()
 
     if stats:
-        # Update existing row
         for field, value in payload.model_dump(exclude={"format"}).items():
             if value is not None:
                 setattr(stats, field, value)
         stats.last_updated = datetime.utcnow()
     else:
-        # Insert new row
         stats = PlayerStats(
             player_id=player_id,
             format=payload.format,
@@ -371,7 +313,7 @@ async def upsert_player_stats(
 
 
 # ---------------------------------------------------------------------------
-# POST /api/players/{player_id}/assign-squad — assign player to a team squad
+# POST /api/players/{player_id}/assign-squad
 # ---------------------------------------------------------------------------
 
 @router.post("/{player_id}/assign-squad", status_code=200)
@@ -380,17 +322,12 @@ async def assign_to_squad(
     payload: SquadAssign,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Assign a player to a named squad.
-    Idempotent — safe to call multiple times (ignores duplicates).
-    """
-    # Verify player exists
+    """Assign a player to a named squad (idempotent)."""
     player_result = await db.execute(select(Player).where(Player.id == player_id))
     player = player_result.scalar_one_or_none()
     if not player:
         raise HTTPException(status_code=404, detail=f"Player {player_id} not found.")
 
-    # Check if assignment already exists
     existing = await db.execute(
         select(Squad).where(
             and_(
@@ -406,16 +343,97 @@ async def assign_to_squad(
             "team_name": payload.team_name,
         }
 
-    new_assignment = Squad(
+    db.add(Squad(
         team_name=payload.team_name.strip(),
         player_id=player_id,
         squad_type=payload.squad_type or "all_format",
-    )
-    db.add(new_assignment)
+    ))
     await db.flush()
-
     return {
-        "message": f"'{player.name}' successfully added to {payload.team_name} squad.",
+        "message": f"'{player.name}' added to {payload.team_name} squad.",
         "player_id": player_id,
         "team_name": payload.team_name,
+    }
+
+
+# ---------------------------------------------------------------------------
+# POST /api/players/{player_id}/upload-image
+# ---------------------------------------------------------------------------
+
+@router.post("/{player_id}/upload-image", status_code=200)
+async def upload_player_image(
+    player_id: int,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Save a player photo to backend/static/player_images/ and update
+    the player's image_url in the DB with the public URL path.
+
+    Frontend accesses the image at:
+      http://localhost:8000/static/player_images/{filename}
+
+    Accepts: JPEG, PNG, WebP — max 5 MB.
+    """
+
+    # Verify player exists
+    result = await db.execute(select(Player).where(Player.id == player_id))
+    player = result.scalar_one_or_none()
+    if not player:
+        raise HTTPException(status_code=404, detail=f"Player {player_id} not found.")
+
+    # Validate file type
+    if file.content_type not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file type '{file.content_type}'. Allowed: JPEG, PNG, WebP.",
+        )
+
+    # Read and validate size
+    file_bytes = await file.read()
+    if len(file_bytes) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File too large ({len(file_bytes) / 1024 / 1024:.1f} MB). Max 5 MB.",
+        )
+
+    # Generate unique filename — keeps old files from clashing
+    ext = file.filename.rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else "jpg"
+    filename = f"player_{player_id}_{uuid.uuid4().hex[:8]}.{ext}"
+    filepath = os.path.join(IMAGES_DIR, filename)
+
+    # Delete old image file if it exists (keep folder clean)
+    if player.image_url:
+        try:
+            old_filename = player.image_url.split("/")[-1]
+            old_path = os.path.join(IMAGES_DIR, old_filename)
+            if os.path.exists(old_path):
+                os.remove(old_path)
+        except Exception:
+            pass  # Non-critical — continue even if old file deletion fails
+
+    # Save new file to disk
+    try:
+        with open(filepath, "wb") as f:
+            f.write(file_bytes)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to save image file: {str(e)}",
+        )
+
+    # Build the public URL the frontend will use to fetch the image
+    # In dev:  http://localhost:8000/static/player_images/player_1_abc123.jpg
+    # In prod: https://your-railway-app.up.railway.app/static/player_images/...
+    image_url = f"/static/player_images/{filename}"
+
+    # Update image_url in DB
+    player.image_url = image_url
+    await db.flush()
+    await db.refresh(player)
+
+    return {
+        "message": f"Image uploaded successfully for {player.name}.",
+        "image_url": image_url,
+        "player_id": player_id,
     }

@@ -622,7 +622,7 @@ export default function HomePage() {
         <div style={{ position: "relative", zIndex: 10, textAlign: "center", maxWidth: "820px", width: "100%" }}>
 
           {/* Badge */}
-          <div className="animate-fade-up delay-0" style={{ display: "flex", justifyContent: "center", marginBottom: "32px" }}>
+          {/* <div className="animate-fade-up delay-0" style={{ display: "flex", justifyContent: "center", marginBottom: "32px" }}>
             <div style={{
               display: "inline-flex", alignItems: "center", gap: "8px",
               background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)",
@@ -642,7 +642,7 @@ export default function HomePage() {
                 Final Year Project — AI System
               </span>
             </div>
-          </div>
+          </div> */}
 
           {/* Animated cricket ball */}
           <div className="animate-fade-up delay-100">

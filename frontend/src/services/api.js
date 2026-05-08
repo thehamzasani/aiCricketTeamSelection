@@ -263,17 +263,207 @@
  *  - Request/response interceptors handle auth tokens and global errors
  */
 
+// import axios from 'axios';
+
+// // ── Axios Instance ────────────────────────────────────────────────────────────
+
+// const api = axios.create({
+//   baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000',
+//   headers: { 'Content-Type': 'application/json' },
+//   timeout: 30_000, // 30s — AI generation can be slow
+// });
+
+// // ── Request Interceptor ───────────────────────────────────────────────────────
+// api.interceptors.request.use(
+//   (config) => {
+//     const token = localStorage.getItem('sb-auth-token');
+//     if (token) config.headers.Authorization = `Bearer ${token}`;
+//     return config;
+//   },
+//   (error) => Promise.reject(error),
+// );
+
+// // ── Response Interceptor ──────────────────────────────────────────────────────
+// api.interceptors.response.use(
+//   (response) => response,
+//   (error) => {
+//     if (error.response) {
+//       const detail = error.response.data?.detail;
+//       const status = error.response.status;
+//       if (typeof detail === 'string') {
+//         error.friendlyMessage = detail;
+//       } else if (Array.isArray(detail)) {
+//         error.friendlyMessage = detail.map((d) => d.msg).join(', ');
+//       } else if (status === 404) {
+//         error.friendlyMessage = 'Resource not found.';
+//       } else if (status === 409) {
+//         error.friendlyMessage = error.response.data?.detail || 'This record already exists.';
+//       } else if (status === 422) {
+//         error.friendlyMessage = 'Invalid request — please check your inputs.';
+//       } else if (status >= 500) {
+//         error.friendlyMessage = 'Server error — please try again later.';
+//       } else {
+//         error.friendlyMessage = `Request failed (${status}).`;
+//       }
+//     } else if (error.code === 'ECONNABORTED') {
+//       error.friendlyMessage = 'Request timed out — the AI might be busy. Please try again.';
+//     } else {
+//       error.friendlyMessage = 'Network error — check your connection.';
+//     }
+//     return Promise.reject(error);
+//   },
+// );
+
+// // ── Helper ────────────────────────────────────────────────────────────────────
+// /** Unwrap Axios response so callers get data directly. */
+// const unwrap = (promise) => promise.then((res) => res.data);
+
+// // =============================================================================
+// // ── SQUADS API ────────────────────────────────────────────────────────────────
+// // =============================================================================
+// export const squadAPI = {
+//   /**
+//    * Fetch all players in a named squad.
+//    * GET /api/squads/{team_name}
+//    */
+//   getSquad: (teamName) =>
+//     unwrap(api.get(`/api/squads/${encodeURIComponent(teamName)}`)),
+
+//   /**
+//    * Get list of all available team names.
+//    * GET /api/squads
+//    */
+//   getTeamNames: () => unwrap(api.get('/api/squads')),
+// };
+
+// // =============================================================================
+// // ── PLAYERS API ───────────────────────────────────────────────────────────────
+// // =============================================================================
+// export const playerAPI = {
+//   /**
+//    * Fetch all active players, optionally filtered.
+//    * GET /api/players?country=Pakistan&role=batsman
+//    */
+//   getPlayers: (params = {}) =>
+//     unwrap(api.get('/api/players', { params })),
+
+//   /**
+//    * Fetch stats for a single player in a given format.
+//    * GET /api/players/{player_id}/stats?format=T20
+//    */
+//   getPlayerStats: (playerId, format = 'T20') =>
+//     unwrap(api.get(`/api/players/${playerId}/stats`, { params: { format } })),
+
+//   /**
+//    * Create a new player.
+//    * POST /api/players
+//    * Body: { name, country, role, batting_style, bowling_style, cricapi_id? }
+//    */
+//   createPlayer: (playerData) =>
+//     unwrap(api.post('/api/players', playerData)),
+
+//   /**
+//    * Update player info (partial update — only provided fields change).
+//    * PUT /api/players/{player_id}
+//    */
+//   updatePlayer: (playerId, playerData) =>
+//     unwrap(api.put(`/api/players/${playerId}`, playerData)),
+
+//   /**
+//    * Soft-delete a player (sets is_active = false).
+//    * DELETE /api/players/{player_id}
+//    */
+//   deletePlayer: (playerId) =>
+//     unwrap(api.delete(`/api/players/${playerId}`)),
+
+//   /**
+//    * Upsert (create or update) stats for a player in a specific format.
+//    * POST /api/players/{player_id}/stats
+//    * Body: { format, matches, batting_avg, strike_rate, ... }
+//    */
+//   upsertPlayerStats: (playerId, statsData) =>
+//     unwrap(api.post(`/api/players/${playerId}/stats`, statsData)),
+
+//   /**
+//    * Assign a player to a named squad.
+//    * POST /api/players/{player_id}/assign-squad
+//    * Body: { team_name, squad_type? }
+//    */
+//   assignToSquad: (playerId, teamName, squadType = 'all_format') =>
+//     unwrap(
+//       api.post(`/api/players/${playerId}/assign-squad`, {
+//         team_name: teamName,
+//         squad_type: squadType,
+//       }),
+//     ),
+// };
+
+// // =============================================================================
+// // ── VENUES API ────────────────────────────────────────────────────────────────
+// // =============================================================================
+// export const venueAPI = {
+//   /** GET /api/venues */
+//   getVenues: () => unwrap(api.get('/api/venues')),
+//   /** GET /api/venues/{venue_id} */
+//   getVenue: (venueId) => unwrap(api.get(`/api/venues/${venueId}`)),
+// };
+
+// // =============================================================================
+// // ── SELECTION API ─────────────────────────────────────────────────────────────
+// // =============================================================================
+// export const selectionAPI = {
+//   /**
+//    * Generate an AI-powered Playing XI.
+//    * POST /api/selection/generate
+//    */
+//   generateXI: (matchSetup) =>
+//     unwrap(api.post('/api/selection/generate', matchSetup)),
+// };
+
+// // =============================================================================
+// // ── HISTORY API ───────────────────────────────────────────────────────────────
+// // =============================================================================
+// export const historyAPI = {
+//   /** GET /api/history */
+//   getHistory: (params = {}) => unwrap(api.get('/api/history', { params })),
+//   /** GET /api/history/{selection_id} */
+//   getSelectionById: (selectionId) =>
+//     unwrap(api.get(`/api/history/${selectionId}`)),
+// };
+
+// // =============================================================================
+// // ── ADMIN API (dev only) ──────────────────────────────────────────────────────
+// // =============================================================================
+// export const adminAPI = {
+//   /** POST /api/admin/seed */
+//   seedDatabase: () => unwrap(api.post('/api/admin/seed')),
+//   /** POST /api/admin/precache/{team_name} */
+//   precacheStats: (teamName) =>
+//     unwrap(api.post(`/api/admin/precache/${encodeURIComponent(teamName)}`)),
+// };
+
+// // ── Legacy named exports (used by SelectTeamPage / ResultPage) ────────────────
+// export const fetchVenues      = () => venueAPI.getVenues();
+// export const fetchSquad       = (teamName) => squadAPI.getSquad(teamName);
+// export const generateSelection = (payload) => selectionAPI.generateXI(payload);
+// export const getSelectionById  = (id) => historyAPI.getSelectionById(id);
+
+// // ── Named export of raw instance (for one-off custom calls) ──────────────────
+// export { api };
+
+/**
+ * services/api.js — Centralised API layer
+ */
 import axios from 'axios';
 
-// ── Axios Instance ────────────────────────────────────────────────────────────
+const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000',
+  baseURL: BASE_URL,
   headers: { 'Content-Type': 'application/json' },
-  timeout: 30_000, // 30s — AI generation can be slow
+  timeout: 30_000,
 });
 
-// ── Request Interceptor ───────────────────────────────────────────────────────
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('sb-auth-token');
@@ -283,30 +473,21 @@ api.interceptors.request.use(
   (error) => Promise.reject(error),
 );
 
-// ── Response Interceptor ──────────────────────────────────────────────────────
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response) {
       const detail = error.response.data?.detail;
       const status = error.response.status;
-      if (typeof detail === 'string') {
-        error.friendlyMessage = detail;
-      } else if (Array.isArray(detail)) {
-        error.friendlyMessage = detail.map((d) => d.msg).join(', ');
-      } else if (status === 404) {
-        error.friendlyMessage = 'Resource not found.';
-      } else if (status === 409) {
-        error.friendlyMessage = error.response.data?.detail || 'This record already exists.';
-      } else if (status === 422) {
-        error.friendlyMessage = 'Invalid request — please check your inputs.';
-      } else if (status >= 500) {
-        error.friendlyMessage = 'Server error — please try again later.';
-      } else {
-        error.friendlyMessage = `Request failed (${status}).`;
-      }
+      if (typeof detail === 'string') error.friendlyMessage = detail;
+      else if (Array.isArray(detail)) error.friendlyMessage = detail.map((d) => d.msg).join(', ');
+      else if (status === 404) error.friendlyMessage = 'Resource not found.';
+      else if (status === 409) error.friendlyMessage = error.response.data?.detail || 'Already exists.';
+      else if (status === 422) error.friendlyMessage = 'Invalid request — check your inputs.';
+      else if (status >= 500) error.friendlyMessage = 'Server error — please try again later.';
+      else error.friendlyMessage = `Request failed (${status}).`;
     } else if (error.code === 'ECONNABORTED') {
-      error.friendlyMessage = 'Request timed out — the AI might be busy. Please try again.';
+      error.friendlyMessage = 'Request timed out — please try again.';
     } else {
       error.friendlyMessage = 'Network error — check your connection.';
     }
@@ -314,81 +495,31 @@ api.interceptors.response.use(
   },
 );
 
-// ── Helper ────────────────────────────────────────────────────────────────────
-/** Unwrap Axios response so callers get data directly. */
 const unwrap = (promise) => promise.then((res) => res.data);
 
-// =============================================================================
-// ── SQUADS API ────────────────────────────────────────────────────────────────
-// =============================================================================
+// ── SQUADS ────────────────────────────────────────────────────────────────────
 export const squadAPI = {
-  /**
-   * Fetch all players in a named squad.
-   * GET /api/squads/{team_name}
-   */
-  getSquad: (teamName) =>
-    unwrap(api.get(`/api/squads/${encodeURIComponent(teamName)}`)),
-
-  /**
-   * Get list of all available team names.
-   * GET /api/squads
-   */
+  getSquad: (teamName) => unwrap(api.get(`/api/squads/${encodeURIComponent(teamName)}`)),
   getTeamNames: () => unwrap(api.get('/api/squads')),
 };
 
-// =============================================================================
-// ── PLAYERS API ───────────────────────────────────────────────────────────────
-// =============================================================================
+// ── PLAYERS ───────────────────────────────────────────────────────────────────
 export const playerAPI = {
-  /**
-   * Fetch all active players, optionally filtered.
-   * GET /api/players?country=Pakistan&role=batsman
-   */
-  getPlayers: (params = {}) =>
-    unwrap(api.get('/api/players', { params })),
+  getPlayers: (params = {}) => unwrap(api.get('/api/players', { params })),
 
-  /**
-   * Fetch stats for a single player in a given format.
-   * GET /api/players/{player_id}/stats?format=T20
-   */
   getPlayerStats: (playerId, format = 'T20') =>
     unwrap(api.get(`/api/players/${playerId}/stats`, { params: { format } })),
 
-  /**
-   * Create a new player.
-   * POST /api/players
-   * Body: { name, country, role, batting_style, bowling_style, cricapi_id? }
-   */
-  createPlayer: (playerData) =>
-    unwrap(api.post('/api/players', playerData)),
+  createPlayer: (playerData) => unwrap(api.post('/api/players', playerData)),
 
-  /**
-   * Update player info (partial update — only provided fields change).
-   * PUT /api/players/{player_id}
-   */
   updatePlayer: (playerId, playerData) =>
     unwrap(api.put(`/api/players/${playerId}`, playerData)),
 
-  /**
-   * Soft-delete a player (sets is_active = false).
-   * DELETE /api/players/{player_id}
-   */
-  deletePlayer: (playerId) =>
-    unwrap(api.delete(`/api/players/${playerId}`)),
+  deletePlayer: (playerId) => unwrap(api.delete(`/api/players/${playerId}`)),
 
-  /**
-   * Upsert (create or update) stats for a player in a specific format.
-   * POST /api/players/{player_id}/stats
-   * Body: { format, matches, batting_avg, strike_rate, ... }
-   */
   upsertPlayerStats: (playerId, statsData) =>
     unwrap(api.post(`/api/players/${playerId}/stats`, statsData)),
 
-  /**
-   * Assign a player to a named squad.
-   * POST /api/players/{player_id}/assign-squad
-   * Body: { team_name, squad_type? }
-   */
   assignToSquad: (playerId, teamName, squadType = 'all_format') =>
     unwrap(
       api.post(`/api/players/${playerId}/assign-squad`, {
@@ -396,57 +527,62 @@ export const playerAPI = {
         squad_type: squadType,
       }),
     ),
+
+  /**
+   * Upload player photo to backend static folder.
+   * Image is served at: http://localhost:8000/static/player_images/filename.jpg
+   * The returned image_url is a relative path like /static/player_images/filename.jpg
+   * Prepend VITE_API_BASE_URL to display it in the browser.
+   */
+  uploadImage: (playerId, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return unwrap(
+      api.post(`/api/players/${playerId}/upload-image`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+        timeout: 60_000,
+      }),
+    );
+  },
+
+  /**
+   * Convert a relative image_url from the DB into a full browser URL.
+   * e.g. /static/player_images/player_1_abc.jpg
+   *   → http://localhost:8000/static/player_images/player_1_abc.jpg
+   */
+  resolveImageUrl: (imageUrl) => {
+    if (!imageUrl) return null;
+    if (imageUrl.startsWith('http')) return imageUrl; // already absolute
+    return `${BASE_URL}${imageUrl}`;
+  },
 };
 
-// =============================================================================
-// ── VENUES API ────────────────────────────────────────────────────────────────
-// =============================================================================
+// ── VENUES ────────────────────────────────────────────────────────────────────
 export const venueAPI = {
-  /** GET /api/venues */
   getVenues: () => unwrap(api.get('/api/venues')),
-  /** GET /api/venues/{venue_id} */
   getVenue: (venueId) => unwrap(api.get(`/api/venues/${venueId}`)),
 };
 
-// =============================================================================
-// ── SELECTION API ─────────────────────────────────────────────────────────────
-// =============================================================================
+// ── SELECTION ─────────────────────────────────────────────────────────────────
 export const selectionAPI = {
-  /**
-   * Generate an AI-powered Playing XI.
-   * POST /api/selection/generate
-   */
-  generateXI: (matchSetup) =>
-    unwrap(api.post('/api/selection/generate', matchSetup)),
+  generateXI: (matchSetup) => unwrap(api.post('/api/selection/generate', matchSetup)),
 };
 
-// =============================================================================
-// ── HISTORY API ───────────────────────────────────────────────────────────────
-// =============================================================================
+// ── HISTORY ───────────────────────────────────────────────────────────────────
 export const historyAPI = {
-  /** GET /api/history */
   getHistory: (params = {}) => unwrap(api.get('/api/history', { params })),
-  /** GET /api/history/{selection_id} */
-  getSelectionById: (selectionId) =>
-    unwrap(api.get(`/api/history/${selectionId}`)),
+  getSelectionById: (selectionId) => unwrap(api.get(`/api/history/${selectionId}`)),
 };
 
-// =============================================================================
-// ── ADMIN API (dev only) ──────────────────────────────────────────────────────
-// =============================================================================
+// ── ADMIN ─────────────────────────────────────────────────────────────────────
 export const adminAPI = {
-  /** POST /api/admin/seed */
   seedDatabase: () => unwrap(api.post('/api/admin/seed')),
-  /** POST /api/admin/precache/{team_name} */
-  precacheStats: (teamName) =>
-    unwrap(api.post(`/api/admin/precache/${encodeURIComponent(teamName)}`)),
 };
 
 // ── Legacy named exports (used by SelectTeamPage / ResultPage) ────────────────
-export const fetchVenues      = () => venueAPI.getVenues();
-export const fetchSquad       = (teamName) => squadAPI.getSquad(teamName);
+export const fetchVenues       = () => venueAPI.getVenues();
+export const fetchSquad        = (teamName) => squadAPI.getSquad(teamName);
 export const generateSelection = (payload) => selectionAPI.generateXI(payload);
 export const getSelectionById  = (id) => historyAPI.getSelectionById(id);
 
-// ── Named export of raw instance (for one-off custom calls) ──────────────────
 export { api };

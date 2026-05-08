@@ -1,32 +1,73 @@
 /**
  * PlayersPage.jsx
- * ---------------
- * Browse all players with filtering and sorting.
- * Updated (Task 13B) to include:
- *   - "Add New Player" button linking to /players/add
- *   - "Edit Stats" button on each player card that navigates to /players/add
- *     with the player pre-selected in Section B (via sessionStorage handoff)
- *   - Stats coverage badges: T20 / ODI / Test — green if stats exist, muted if not
+ * Browse all players with filtering, sorting, and real player photos.
+ * Shows backend-hosted image if available, falls back to role emoji avatar.
  */
 
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { playerAPI } from '../services/api';
 
-// ─── Role Configuration ────────────────────────────────────────────────────
+// ─── Role & Country Config ────────────────────────────────────────────────────
 const ROLE_CONFIG = {
-  batsman:     { label: 'Batsman',       color: '#10B981', bg: 'rgba(16,185,129,0.12)',  icon: '🏏' },
-  bowler:      { label: 'Bowler',        color: '#F59E0B', bg: 'rgba(245,158,11,0.12)',  icon: '⚡' },
-  allrounder:  { label: 'All-rounder',   color: '#6366F1', bg: 'rgba(99,102,241,0.12)',  icon: '🌟' },
-  wicketkeeper:{ label: 'Wicket-keeper', color: '#EC4899', bg: 'rgba(236,72,153,0.12)',  icon: '🧤' },
+  batsman:      { label: 'Batsman',       color: '#10B981', bg: 'rgba(16,185,129,0.12)',  icon: '🏏' },
+  bowler:       { label: 'Bowler',        color: '#F59E0B', bg: 'rgba(245,158,11,0.12)',  icon: '⚡' },
+  allrounder:   { label: 'All-rounder',   color: '#6366F1', bg: 'rgba(99,102,241,0.12)',  icon: '🌟' },
+  wicketkeeper: { label: 'Wicket-keeper', color: '#EC4899', bg: 'rgba(236,72,153,0.12)',  icon: '🧤' },
 };
-
 const COUNTRY_CONFIG = {
   Pakistan: { flag: '🇵🇰', color: '#10B981' },
   India:    { flag: '🇮🇳', color: '#F59E0B' },
 };
 
-// ─── Score Meter ───────────────────────────────────────────────────────────
+// ─── Player Avatar ────────────────────────────────────────────────────────────
+// Shows the real player photo if image_url exists, otherwise falls back to role emoji.
+// resolveImageUrl converts "/static/player_images/x.jpg" → "http://localhost:8000/static/..."
+function PlayerAvatar({ imageUrl, name, role, size = 46 }) {
+  const [imgError, setImgError] = useState(false);
+  const cfg = ROLE_CONFIG[role] || ROLE_CONFIG.batsman;
+  const resolvedUrl = playerAPI.resolveImageUrl(imageUrl);
+
+  if (resolvedUrl && !imgError) {
+    return (
+      <div style={{
+        width: size,
+        height: size,
+        borderRadius: size > 50 ? 18 : '50%',
+        overflow: 'hidden',
+        flexShrink: 0,
+        border: `1.5px solid ${cfg.color}33`,
+      }}>
+        <img
+          src={resolvedUrl}
+          alt={name}
+          onError={() => setImgError(true)}
+          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        />
+      </div>
+    );
+  }
+
+  // Fallback — role emoji avatar
+  return (
+    <div style={{
+      width: size,
+      height: size,
+      borderRadius: size > 50 ? 18 : '50%',
+      background: cfg.bg,
+      border: `1.5px solid ${cfg.color}33`,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontSize: size * 0.42,
+      flexShrink: 0,
+    }}>
+      {cfg.icon}
+    </div>
+  );
+}
+
+// ─── Score Meter ──────────────────────────────────────────────────────────────
 function ScoreMeter({ score, size = 'normal' }) {
   const pct   = Math.min(100, Math.max(0, score || 0));
   const color = pct >= 80 ? '#10B981' : pct >= 60 ? '#F59E0B' : pct >= 40 ? '#6366F1' : '#9CA3AF';
@@ -48,7 +89,7 @@ function ScoreMeter({ score, size = 'normal' }) {
   );
 }
 
-// ─── Stat Pill ─────────────────────────────────────────────────────────────
+// ─── Stat Pill ────────────────────────────────────────────────────────────────
 function StatPill({ label, value }) {
   return (
     <div style={{ background: '#0A0F1E', border: '1px solid #1E293B', borderRadius: 10, padding: '6px 10px', display: 'flex', flexDirection: 'column', alignItems: 'center', minWidth: 52 }}>
@@ -58,44 +99,7 @@ function StatPill({ label, value }) {
   );
 }
 
-// ─── Stats Coverage Badges ─────────────────────────────────────────────────
-/**
- * Shows T20 / ODI / Test badges.
- * Green = stats exist for that format. Muted gray = no stats yet.
- */
-function StatsCoverageBadges({ stats }) {
-  const formats = ['T20', 'ODI', 'Test'];
-  const existing = new Set((stats || []).map((s) => s.format));
-  return (
-    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
-      {formats.map((fmt) => {
-        const has = existing.has(fmt);
-        return (
-          <span
-            key={fmt}
-            title={has ? `${fmt} stats available` : `No ${fmt} stats yet`}
-            style={{
-              fontFamily: "'JetBrains Mono', monospace",
-              fontSize: 9,
-              fontWeight: 700,
-              padding: '2px 7px',
-              borderRadius: 6,
-              border: `1px solid ${has ? '#10B98166' : '#1E293B'}`,
-              background: has ? 'rgba(16,185,129,0.1)' : 'transparent',
-              color: has ? '#10B981' : '#4B5563',
-              letterSpacing: '0.04em',
-              cursor: 'default',
-            }}
-          >
-            {fmt}
-          </span>
-        );
-      })}
-    </div>
-  );
-}
-
-// ─── Stat Block (modal) ────────────────────────────────────────────────────
+// ─── Stat Block (modal) ───────────────────────────────────────────────────────
 function StatBlock({ label, value, accent }) {
   return (
     <div style={{ background: '#0A0F1E', border: '1px solid #1E293B', borderRadius: 12, padding: '10px 12px', textAlign: 'center' }}>
@@ -105,40 +109,50 @@ function StatBlock({ label, value, accent }) {
   );
 }
 
-// ─── Player Card ───────────────────────────────────────────────────────────
+// ─── Stats Coverage Badges ────────────────────────────────────────────────────
+function StatsCoverageBadges({ stats }) {
+  const existing = new Set((stats || []).map(s => s.format));
+  return (
+    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+      {['T20', 'ODI', 'Test'].map(fmt => {
+        const has = existing.has(fmt);
+        return (
+          <span key={fmt} style={{
+            fontFamily: "'JetBrains Mono', monospace",
+            fontSize: 9, fontWeight: 700,
+            padding: '2px 7px', borderRadius: 6,
+            border: `1px solid ${has ? '#10B98166' : '#1E293B'}`,
+            background: has ? 'rgba(16,185,129,0.1)' : 'transparent',
+            color: has ? '#10B981' : '#4B5563',
+            letterSpacing: '0.04em', cursor: 'default',
+          }}>
+            {fmt}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Player Card ──────────────────────────────────────────────────────────────
 function PlayerCard({ player, onClick, onEditStats, index }) {
   const role    = ROLE_CONFIG[player.role] || ROLE_CONFIG.batsman;
   const country = COUNTRY_CONFIG[player.country] || { flag: '🌍', color: '#9CA3AF' };
-  const stats   = (player.stats || [])[0] || {};         // primary stats (first format)
+  const stats   = (player.stats || [])[0] || {};
   const isBowler     = player.role === 'bowler';
   const isAllrounder = player.role === 'allrounder';
 
   return (
     <div
       style={{
-        background: '#111827',
-        border: '1px solid #1E293B',
-        borderRadius: 20,
-        padding: '22px 20px',
-        cursor: 'pointer',
-        transition: 'all 0.25s ease',
+        background: '#111827', border: '1px solid #1E293B', borderRadius: 20,
+        padding: '22px 20px', cursor: 'pointer', transition: 'all 0.25s ease',
         animation: 'fadeSlideUp 0.4s ease both',
         animationDelay: `${Math.min(index * 40, 400)}ms`,
-        position: 'relative',
-        overflow: 'hidden',
-        display: 'flex',
-        flexDirection: 'column',
+        position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column',
       }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.borderColor = role.color + '55';
-        e.currentTarget.style.transform   = 'translateY(-3px)';
-        e.currentTarget.style.boxShadow   = `0 12px 40px ${role.color}18`;
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.borderColor = '#1E293B';
-        e.currentTarget.style.transform   = 'translateY(0)';
-        e.currentTarget.style.boxShadow   = 'none';
-      }}
+      onMouseEnter={e => { e.currentTarget.style.borderColor = role.color + '55'; e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.boxShadow = `0 12px 40px ${role.color}18`; }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = '#1E293B'; e.currentTarget.style.transform = 'translateY(0)'; e.currentTarget.style.boxShadow = 'none'; }}
       onClick={() => onClick(player)}
     >
       {/* Top gradient line */}
@@ -146,9 +160,8 @@ function PlayerCard({ player, onClick, onEditStats, index }) {
 
       {/* Avatar + Country */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
-        <div style={{ width: 46, height: 46, borderRadius: '50%', background: role.bg, border: `1.5px solid ${role.color}33`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>
-          {role.icon}
-        </div>
+        {/* PlayerAvatar — shows real photo or role emoji fallback */}
+        <PlayerAvatar imageUrl={player.image_url} name={player.name} role={player.role} size={46} />
         <span style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 11, background: '#0A0F1E', border: '1px solid #1E293B', borderRadius: 8, padding: '3px 8px', color: country.color, display: 'flex', alignItems: 'center', gap: 4 }}>
           {country.flag} {player.country}
         </span>
@@ -196,32 +209,13 @@ function PlayerCard({ player, onClick, onEditStats, index }) {
         </p>
       )}
 
-      {/* Edit Stats button — stops propagation so the card's onClick (modal) doesn't fire */}
+      {/* Edit Stats button */}
       <div style={{ marginTop: 'auto', paddingTop: 12, borderTop: '1px solid #1E293B' }}>
         <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onEditStats(player);
-          }}
-          style={{
-            width: '100%',
-            fontFamily: "'DM Sans', sans-serif",
-            fontWeight: 600,
-            fontSize: 12,
-            padding: '8px 12px',
-            borderRadius: 10,
-            border: '1px solid rgba(245,158,11,0.35)',
-            background: 'rgba(245,158,11,0.06)',
-            color: '#F59E0B',
-            cursor: 'pointer',
-            transition: 'all 0.2s',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 6,
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(245,158,11,0.14)'; e.currentTarget.style.borderColor = '#F59E0B'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(245,158,11,0.06)'; e.currentTarget.style.borderColor = 'rgba(245,158,11,0.35)'; }}
+          onClick={e => { e.stopPropagation(); onEditStats(player); }}
+          style={{ width: '100%', fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12, padding: '8px 12px', borderRadius: 10, border: '1px solid rgba(245,158,11,0.35)', background: 'rgba(245,158,11,0.06)', color: '#F59E0B', cursor: 'pointer', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
+          onMouseEnter={e => { e.currentTarget.style.background = 'rgba(245,158,11,0.14)'; e.currentTarget.style.borderColor = '#F59E0B'; }}
+          onMouseLeave={e => { e.currentTarget.style.background = 'rgba(245,158,11,0.06)'; e.currentTarget.style.borderColor = 'rgba(245,158,11,0.35)'; }}
         >
           📊 Edit Stats
         </button>
@@ -230,7 +224,7 @@ function PlayerCard({ player, onClick, onEditStats, index }) {
   );
 }
 
-// ─── Player Modal ──────────────────────────────────────────────────────────
+// ─── Player Modal ─────────────────────────────────────────────────────────────
 function PlayerModal({ player, onClose, onEditStats }) {
   const overlayRef = useRef(null);
   const role    = ROLE_CONFIG[player.role] || ROLE_CONFIG.batsman;
@@ -240,7 +234,7 @@ function PlayerModal({ player, onClose, onEditStats }) {
   const isAllrounder = player.role === 'allrounder';
 
   useEffect(() => {
-    const handleKey = (e) => e.key === 'Escape' && onClose();
+    const handleKey = e => e.key === 'Escape' && onClose();
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   }, [onClose]);
@@ -248,26 +242,25 @@ function PlayerModal({ player, onClose, onEditStats }) {
   return (
     <div
       ref={overlayRef}
-      onClick={(e) => e.target === overlayRef.current && onClose()}
+      onClick={e => e.target === overlayRef.current && onClose()}
       style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px 16px', animation: 'fadeIn 0.2s ease' }}
     >
       <div style={{ background: '#111827', border: `1px solid ${role.color}33`, borderRadius: 24, width: '100%', maxWidth: 560, maxHeight: '90vh', overflowY: 'auto', position: 'relative', animation: 'modalSlideUp 0.3s cubic-bezier(0.34,1.56,0.64,1)', boxShadow: `0 40px 80px ${role.color}18` }}>
         <div style={{ height: 3, background: `linear-gradient(90deg, transparent, ${role.color}, transparent)`, borderRadius: '24px 24px 0 0' }} />
 
         <div style={{ padding: '28px 28px 32px' }}>
-          {/* Close */}
+          {/* Close button */}
           <button
             onClick={onClose}
             style={{ position: 'absolute', top: 20, right: 20, background: '#1E293B', border: 'none', color: '#9CA3AF', width: 32, height: 32, borderRadius: '50%', cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s' }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = '#374151'; e.currentTarget.style.color = '#F9FAFB'; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = '#1E293B'; e.currentTarget.style.color = '#9CA3AF'; }}
+            onMouseEnter={e => { e.currentTarget.style.background = '#374151'; e.currentTarget.style.color = '#F9FAFB'; }}
+            onMouseLeave={e => { e.currentTarget.style.background = '#1E293B'; e.currentTarget.style.color = '#9CA3AF'; }}
           >✕</button>
 
-          {/* Header */}
+          {/* Header — large photo */}
           <div style={{ display: 'flex', gap: 16, alignItems: 'center', marginBottom: 20 }}>
-            <div style={{ width: 64, height: 64, borderRadius: 18, background: role.bg, border: `2px solid ${role.color}44`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, flexShrink: 0 }}>
-              {role.icon}
-            </div>
+            {/* PlayerAvatar at size 72 — shows real photo or role emoji */}
+            <PlayerAvatar imageUrl={player.image_url} name={player.name} role={player.role} size={72} />
             <div>
               <h2 style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, letterSpacing: '0.05em', color: '#F9FAFB', margin: 0, lineHeight: 1 }}>{player.name}</h2>
               <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -289,31 +282,31 @@ function PlayerModal({ player, onClose, onEditStats }) {
             <ScoreMeter score={player.overall_score} />
           </div>
 
-          {/* Batting */}
+          {/* Batting stats */}
           {(!isBowler || isAllrounder) && (
             <div style={{ marginBottom: 18 }}>
               <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 10, color: '#4B5563', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>🏏 Batting Stats</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-                <StatBlock label="Average"     value={stats.batting_avg  ? Number(stats.batting_avg).toFixed(2)  : '—'} accent={role.color} />
-                <StatBlock label="Strike Rate" value={stats.strike_rate  ? Number(stats.strike_rate).toFixed(2)  : '—'} accent={role.color} />
-                <StatBlock label="Total Runs"  value={stats.runs_total   ?? '—'}                                          accent={role.color} />
-                <StatBlock label="Highest"     value={stats.highest_score ?? '—'}                                          accent={role.color} />
-                <StatBlock label="50s"         value={stats.fifties       ?? '—'}                                          accent={role.color} />
-                <StatBlock label="100s"        value={stats.centuries     ?? '—'}                                          accent={role.color} />
+                <StatBlock label="Average"     value={stats.batting_avg   ? Number(stats.batting_avg).toFixed(2)   : '—'} accent={role.color} />
+                <StatBlock label="Strike Rate" value={stats.strike_rate   ? Number(stats.strike_rate).toFixed(2)   : '—'} accent={role.color} />
+                <StatBlock label="Total Runs"  value={stats.runs_total    ?? '—'}                                           accent={role.color} />
+                <StatBlock label="Highest"     value={stats.highest_score ?? '—'}                                           accent={role.color} />
+                <StatBlock label="50s"         value={stats.fifties       ?? '—'}                                           accent={role.color} />
+                <StatBlock label="100s"        value={stats.centuries     ?? '—'}                                           accent={role.color} />
               </div>
             </div>
           )}
 
-          {/* Bowling */}
+          {/* Bowling stats */}
           {(isBowler || isAllrounder) && (
             <div style={{ marginBottom: 18 }}>
               <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 10, color: '#4B5563', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>⚡ Bowling Stats</p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-                <StatBlock label="Wickets" value={stats.wickets_total     ?? '—'}                                                      accent="#F59E0B" />
-                <StatBlock label="Economy" value={stats.bowling_economy   ? Number(stats.bowling_economy).toFixed(2)   : '—'}          accent="#F59E0B" />
-                <StatBlock label="Avg"     value={stats.bowling_avg       ? Number(stats.bowling_avg).toFixed(2)       : '—'}          accent="#F59E0B" />
-                <StatBlock label="SR"      value={stats.bowling_strike_rate ? Number(stats.bowling_strike_rate).toFixed(2) : '—'}      accent="#F59E0B" />
-                <StatBlock label="Best"    value={stats.best_bowling      ?? '—'}                                                      accent="#F59E0B" />
+                <StatBlock label="Wickets" value={stats.wickets_total        ?? '—'}                                                       accent="#F59E0B" />
+                <StatBlock label="Economy" value={stats.bowling_economy      ? Number(stats.bowling_economy).toFixed(2)      : '—'}        accent="#F59E0B" />
+                <StatBlock label="Avg"     value={stats.bowling_avg          ? Number(stats.bowling_avg).toFixed(2)          : '—'}        accent="#F59E0B" />
+                <StatBlock label="SR"      value={stats.bowling_strike_rate  ? Number(stats.bowling_strike_rate).toFixed(2)  : '—'}        accent="#F59E0B" />
+                <StatBlock label="Best"    value={stats.best_bowling         ?? '—'}                                                       accent="#F59E0B" />
               </div>
             </div>
           )}
@@ -323,40 +316,27 @@ function PlayerModal({ player, onClose, onEditStats }) {
             <div style={{ marginBottom: 18 }}>
               <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 10, color: '#4B5563', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 10 }}>📊 Recent Form</p>
               <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                {stats.recent_form.map((score, i) => (
-                  <div key={i} style={{ background: score >= 50 ? 'rgba(16,185,129,0.15)' : score >= 20 ? 'rgba(245,158,11,0.12)' : '#0A0F1E', border: `1px solid ${score >= 50 ? '#10B981' : score >= 20 ? '#F59E0B' : '#1E293B'}44`, borderRadius: 10, padding: '8px 12px', fontFamily: "'JetBrains Mono', monospace", fontSize: 14, fontWeight: 700, color: score >= 50 ? '#10B981' : score >= 20 ? '#F59E0B' : '#9CA3AF' }}>
-                    {score}
+                {stats.recent_form.map((s, i) => (
+                  <div key={i} style={{ background: s >= 50 ? 'rgba(16,185,129,0.15)' : s >= 20 ? 'rgba(245,158,11,0.12)' : '#0A0F1E', border: `1px solid ${s >= 50 ? '#10B981' : s >= 20 ? '#F59E0B' : '#1E293B'}44`, borderRadius: 10, padding: '8px 12px', fontFamily: "'JetBrains Mono', monospace", fontSize: 14, fontWeight: 700, color: s >= 50 ? '#10B981' : s >= 20 ? '#F59E0B' : '#9CA3AF' }}>
+                    {s}
                   </div>
                 ))}
               </div>
             </div>
           )}
 
-          {/* Styles */}
+          {/* Player styles */}
           <div style={{ paddingTop: 14, borderTop: '1px solid #1E293B' }}>
             {player.batting_style && <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 12, color: '#9CA3AF', margin: '0 0 4px 0' }}><span style={{ color: '#4B5563' }}>Batting: </span>{player.batting_style}</p>}
             {player.bowling_style && <p style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 12, color: '#9CA3AF', margin: 0 }}><span style={{ color: '#4B5563' }}>Bowling: </span>{player.bowling_style}</p>}
           </div>
 
-          {/* Edit Stats button in modal */}
+          {/* Edit Stats button */}
           <button
             onClick={() => { onClose(); onEditStats(player); }}
-            style={{
-              width: '100%',
-              marginTop: 20,
-              fontFamily: "'DM Sans', sans-serif",
-              fontWeight: 700,
-              fontSize: 13,
-              padding: '11px 16px',
-              borderRadius: 12,
-              border: '1px solid rgba(245,158,11,0.4)',
-              background: 'rgba(245,158,11,0.08)',
-              color: '#F59E0B',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(245,158,11,0.16)')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = 'rgba(245,158,11,0.08)')}
+            style={{ width: '100%', marginTop: 20, fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, padding: '11px 16px', borderRadius: 12, border: '1px solid rgba(245,158,11,0.4)', background: 'rgba(245,158,11,0.08)', color: '#F59E0B', cursor: 'pointer', transition: 'all 0.2s' }}
+            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(245,158,11,0.16)')}
+            onMouseLeave={e => (e.currentTarget.style.background = 'rgba(245,158,11,0.08)')}
           >
             📊 Edit Stats for {player.name}
           </button>
@@ -366,7 +346,7 @@ function PlayerModal({ player, onClose, onEditStats }) {
   );
 }
 
-// ─── Skeleton Card ─────────────────────────────────────────────────────────
+// ─── Skeleton Card ────────────────────────────────────────────────────────────
 function SkeletonCard() {
   return (
     <div style={{ background: '#111827', border: '1px solid #1E293B', borderRadius: 20, padding: '22px 20px' }}>
@@ -377,47 +357,41 @@ function SkeletonCard() {
   );
 }
 
-// ─── Main Page ─────────────────────────────────────────────────────────────
+// ─── Main Page ────────────────────────────────────────────────────────────────
 export default function PlayersPage() {
   const navigate = useNavigate();
-  const [players, setPlayers]             = useState([]);
-  const [loading, setLoading]             = useState(true);
-  const [error, setError]                 = useState(null);
-  const [search, setSearch]               = useState('');
-  const [country, setCountry]             = useState('All');
-  const [role, setRole]                   = useState('All');
+  const [players, setPlayers]               = useState([]);
+  const [loading, setLoading]               = useState(true);
+  const [error, setError]                   = useState(null);
+  const [search, setSearch]                 = useState('');
+  const [country, setCountry]               = useState('All');
+  const [role, setRole]                     = useState('All');
   const [selectedPlayer, setSelectedPlayer] = useState(null);
-  const [sortBy, setSortBy]               = useState('score');
+  const [sortBy, setSortBy]                 = useState('score');
 
   useEffect(() => {
-    const fetchPlayers = async () => {
+    (async () => {
       try {
         setLoading(true);
         setError(null);
         const data = await playerAPI.getPlayers();
         setPlayers(data);
       } catch (err) {
-        console.error('Failed to fetch players:', err);
         setError(err.friendlyMessage || 'Could not load players. Please try again.');
       } finally {
         setLoading(false);
       }
-    };
-    fetchPlayers();
+    })();
   }, []);
 
-  /**
-   * Navigate to /players/add and hand-off the selected player so
-   * Section B can auto-populate. We use sessionStorage as a lightweight
-   * cross-page signal (cleared by AddPlayerPage after reading).
-   */
+  // Navigate to /players/add with the player pre-selected in Section B
   const handleEditStats = (player) => {
     sessionStorage.setItem('editStatsPlayer', JSON.stringify(player));
     navigate('/players/add');
   };
 
   const filtered = players
-    .filter((p) => {
+    .filter(p => {
       const matchSearch  = p.name.toLowerCase().includes(search.toLowerCase());
       const matchCountry = country === 'All' || p.country === country;
       const matchRole    = role === 'All'    || p.role    === role;
@@ -429,7 +403,6 @@ export default function PlayersPage() {
       return 0;
     });
 
-  const countries  = ['All', 'Pakistan', 'India'];
   const roles      = ['All', 'batsman', 'bowler', 'allrounder', 'wicketkeeper'];
   const roleLabels = { All: 'All', batsman: 'Batsman', bowler: 'Bowler', allrounder: 'All-rounder', wicketkeeper: 'Wicket-keeper' };
 
@@ -437,23 +410,10 @@ export default function PlayersPage() {
     <>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
-
-        @keyframes fadeSlideUp {
-          from { opacity: 0; transform: translateY(16px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to   { opacity: 1; }
-        }
-        @keyframes modalSlideUp {
-          from { opacity: 0; transform: scale(0.95) translateY(20px); }
-          to   { opacity: 1; transform: scale(1) translateY(0); }
-        }
-        @keyframes shimmer {
-          0%   { background-position: 200% 0; }
-          100% { background-position: -200% 0; }
-        }
+        @keyframes fadeSlideUp { from { opacity: 0; transform: translateY(16px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes modalSlideUp { from { opacity: 0; transform: scale(0.95) translateY(20px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         input::placeholder { color: #4B5563; }
         input:focus { outline: none; border-color: #10B981 !important; }
@@ -482,42 +442,21 @@ export default function PlayersPage() {
             </div>
 
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-              {/* Sort */}
+              {/* Sort buttons */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontSize: 12, color: '#4B5563' }}>Sort</span>
-                {['score', 'name'].map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => setSortBy(s)}
-                    style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 12, fontWeight: 600, padding: '6px 14px', borderRadius: 8, border: '1px solid', borderColor: sortBy === s ? '#10B981' : '#1E293B', background: sortBy === s ? 'rgba(16,185,129,0.12)' : 'transparent', color: sortBy === s ? '#10B981' : '#9CA3AF', cursor: 'pointer', transition: 'all 0.2s', textTransform: 'capitalize' }}
-                  >
+                {['score', 'name'].map(s => (
+                  <button key={s} onClick={() => setSortBy(s)}
+                    style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 12, fontWeight: 600, padding: '6px 14px', borderRadius: 8, border: '1px solid', borderColor: sortBy === s ? '#10B981' : '#1E293B', background: sortBy === s ? 'rgba(16,185,129,0.12)' : 'transparent', color: sortBy === s ? '#10B981' : '#9CA3AF', cursor: 'pointer', transition: 'all 0.2s', textTransform: 'capitalize' }}>
                     {s === 'score' ? 'AI Score' : 'Name'}
                   </button>
                 ))}
               </div>
-
-              {/* ── Add New Player button (Task 13B) ── */}
-              <a
-                href="/players/add"
-                style={{
-                  fontFamily: "'DM Sans', sans-serif",
-                  fontWeight: 700,
-                  fontSize: 13,
-                  padding: '9px 20px',
-                  borderRadius: 10,
-                  border: 'none',
-                  background: '#10B981',
-                  color: '#fff',
-                  textDecoration: 'none',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 8,
-                  transition: 'background 0.2s',
-                  whiteSpace: 'nowrap',
-                }}
-                onMouseEnter={(e) => (e.currentTarget.style.background = '#34D399')}
-                onMouseLeave={(e) => (e.currentTarget.style.background = '#10B981')}
-              >
+              {/* Add New Player button */}
+              <a href="/players/add"
+                style={{ fontFamily: "'DM Sans', sans-serif", fontWeight: 700, fontSize: 13, padding: '9px 20px', borderRadius: 10, border: 'none', background: '#10B981', color: '#fff', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 8, transition: 'background 0.2s', whiteSpace: 'nowrap' }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#34D399')}
+                onMouseLeave={e => (e.currentTarget.style.background = '#10B981')}>
                 ➕ Add New Player
               </a>
             </div>
@@ -529,42 +468,38 @@ export default function PlayersPage() {
             <div style={{ position: 'relative', flex: '1 1 240px', minWidth: 200 }}>
               <span style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 16, color: '#4B5563', pointerEvents: 'none' }}>🔍</span>
               <input
-                type="text"
-                placeholder="Search player..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                style={{ width: '100%', background: '#0A0F1E', border: '1px solid #1E293B', borderRadius: 12, padding: '10px 14px 10px 40px', color: '#F9FAFB', fontFamily: "'DM Sans', sans-serif", fontSize: 14, transition: 'border-color 0.2s', outline: 'none', boxSizing: 'border-box' }}
-                onFocus={(e)  => (e.target.style.borderColor = '#10B981')}
-                onBlur={(e)   => (e.target.style.borderColor = '#1E293B')}
+                type="text" placeholder="Search player..." value={search}
+                onChange={e => setSearch(e.target.value)}
+                style={{ width: '100%', background: '#0A0F1E', border: '1px solid #1E293B', borderRadius: 12, padding: '10px 14px 10px 40px', color: '#F9FAFB', fontFamily: "'DM Sans', sans-serif", fontSize: 14, outline: 'none', boxSizing: 'border-box', transition: 'border-color 0.2s' }}
+                onFocus={e => (e.target.style.borderColor = '#10B981')}
+                onBlur={e => (e.target.style.borderColor = '#1E293B')}
               />
             </div>
 
-            {/* Country */}
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {countries.map((c) => (
-                <button key={c} onClick={() => setCountry(c)} style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 12, fontWeight: 600, padding: '8px 16px', borderRadius: 10, border: '1px solid', borderColor: country === c ? '#10B981' : '#1E293B', background: country === c ? 'rgba(16,185,129,0.12)' : 'transparent', color: country === c ? '#10B981' : '#9CA3AF', cursor: 'pointer', transition: 'all 0.2s' }}>
-                  {c === 'Pakistan' ? '🇵🇰 ' : c === 'India' ? '🇮🇳 ' : '🌍 '}{c}
-                </button>
-              ))}
-            </div>
+            {/* Country filter */}
+            {['All', 'Pakistan', 'India'].map(c => (
+              <button key={c} onClick={() => setCountry(c)}
+                style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 12, fontWeight: 600, padding: '8px 16px', borderRadius: 10, border: '1px solid', borderColor: country === c ? '#10B981' : '#1E293B', background: country === c ? 'rgba(16,185,129,0.12)' : 'transparent', color: country === c ? '#10B981' : '#9CA3AF', cursor: 'pointer', transition: 'all 0.2s' }}>
+                {c === 'Pakistan' ? '🇵🇰 ' : c === 'India' ? '🇮🇳 ' : '🌍 '}{c}
+              </button>
+            ))}
 
             <div style={{ width: 1, height: 28, background: '#1E293B', flexShrink: 0 }} />
 
-            {/* Role */}
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {roles.map((r) => {
-                const cfg      = ROLE_CONFIG[r];
-                const isActive = role === r;
-                return (
-                  <button key={r} onClick={() => setRole(r)} style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 12, fontWeight: 600, padding: '8px 14px', borderRadius: 10, border: '1px solid', borderColor: isActive ? (cfg?.color || '#10B981') : '#1E293B', background: isActive ? (cfg ? cfg.bg : 'rgba(16,185,129,0.12)') : 'transparent', color: isActive ? (cfg?.color || '#10B981') : '#9CA3AF', cursor: 'pointer', transition: 'all 0.2s' }}>
-                    {cfg ? `${cfg.icon} ` : ''}{roleLabels[r]}
-                  </button>
-                );
-              })}
-            </div>
+            {/* Role filter */}
+            {roles.map(r => {
+              const cfg = ROLE_CONFIG[r];
+              const isActive = role === r;
+              return (
+                <button key={r} onClick={() => setRole(r)}
+                  style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 12, fontWeight: 600, padding: '8px 14px', borderRadius: 10, border: '1px solid', borderColor: isActive ? (cfg?.color || '#10B981') : '#1E293B', background: isActive ? (cfg ? cfg.bg : 'rgba(16,185,129,0.12)') : 'transparent', color: isActive ? (cfg?.color || '#10B981') : '#9CA3AF', cursor: 'pointer', transition: 'all 0.2s' }}>
+                  {cfg ? `${cfg.icon} ` : ''}{roleLabels[r]}
+                </button>
+              );
+            })}
           </div>
 
-          {/* Error */}
+          {/* Error state */}
           {error && (
             <div style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', borderRadius: 16, padding: '20px 24px', marginBottom: 24, display: 'flex', alignItems: 'center', gap: 12 }}>
               <span style={{ fontSize: 20 }}>⚠️</span>
@@ -584,10 +519,11 @@ export default function PlayersPage() {
                   <p style={{ fontFamily: "'Bebas Neue', sans-serif", fontSize: 28, letterSpacing: '0.05em', color: '#F9FAFB', marginBottom: 8 }}>No Players Found</p>
                   <p style={{ color: '#4B5563', fontSize: 14, marginBottom: 24 }}>Try adjusting your filters or add a new player.</p>
                   <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-                    <button onClick={() => { setSearch(''); setCountry('All'); setRole('All'); }} style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 600, padding: '10px 24px', borderRadius: 10, border: '1px solid #1E293B', background: 'transparent', color: '#9CA3AF', cursor: 'pointer' }}>
+                    <button onClick={() => { setSearch(''); setCountry('All'); setRole('All'); }}
+                      style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 600, padding: '10px 24px', borderRadius: 10, border: '1px solid #1E293B', background: 'transparent', color: '#9CA3AF', cursor: 'pointer' }}>
                       Clear Filters
                     </button>
-                    <a href="/players/add" style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 600, padding: '10px 24px', borderRadius: 10, border: 'none', background: '#10B981', color: '#fff', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                    <a href="/players/add" style={{ fontFamily: "'DM Sans', sans-serif", fontSize: 13, fontWeight: 600, padding: '10px 24px', borderRadius: 10, border: 'none', background: '#10B981', color: '#fff', textDecoration: 'none' }}>
                       ➕ Add Player
                     </a>
                   </div>
@@ -604,16 +540,17 @@ export default function PlayersPage() {
               ))}
           </div>
 
-          {/* Footer stats */}
+          {/* Footer stats bar */}
           {!loading && !error && players.length > 0 && (
             <div style={{ marginTop: 40, padding: '18px 24px', background: '#111827', border: '1px solid #1E293B', borderRadius: 16, display: 'flex', gap: 32, flexWrap: 'wrap', justifyContent: 'center' }}>
               {[
                 { label: 'Total Players',  value: players.length },
-                { label: 'Pakistan',       value: players.filter((p) => p.country === 'Pakistan').length },
-                { label: 'India',          value: players.filter((p) => p.country === 'India').length },
-                { label: 'Batsmen',        value: players.filter((p) => p.role === 'batsman').length },
-                { label: 'Bowlers',        value: players.filter((p) => p.role === 'bowler').length },
-                { label: 'All-rounders',   value: players.filter((p) => p.role === 'allrounder').length },
+                { label: 'Pakistan',       value: players.filter(p => p.country === 'Pakistan').length },
+                { label: 'India',          value: players.filter(p => p.country === 'India').length },
+                { label: 'With Photos',    value: players.filter(p => p.image_url).length },
+                { label: 'Batsmen',        value: players.filter(p => p.role === 'batsman').length },
+                { label: 'Bowlers',        value: players.filter(p => p.role === 'bowler').length },
+                { label: 'All-rounders',   value: players.filter(p => p.role === 'allrounder').length },
               ].map(({ label, value }) => (
                 <div key={label} style={{ textAlign: 'center' }}>
                   <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 22, fontWeight: 700, color: '#10B981', lineHeight: 1 }}>{value}</p>
@@ -625,6 +562,7 @@ export default function PlayersPage() {
         </div>
       </div>
 
+      {/* Player detail modal */}
       {selectedPlayer && (
         <PlayerModal
           player={selectedPlayer}

@@ -51,7 +51,7 @@ export default function Navbar() {
             </div>
             <span
               className="text-2xl tracking-widest text-white group-hover:text-emerald-400 transition-colors duration-200"
-              style={{ fontFamily: "'Bebas Neue', cursive" }}
+              style={{ fontFamily: "'Rajdhani', sans-serif" }}
             >
               CricketAI
             </span>
@@ -72,7 +72,7 @@ export default function Navbar() {
                       : "text-[#9CA3AF] hover:text-white"
                   }`
                 }
-                style={{ fontFamily: "'DM Sans', sans-serif" }}
+                style={{ fontFamily: "'Rajdhani', sans-serif" }}
               >
                 {({ isActive }) => (
                   <>
@@ -88,7 +88,7 @@ export default function Navbar() {
             <NavLink
               to="/select"
               className="ml-4 px-5 py-2 bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-bold rounded-xl transition-all duration-200 shadow-lg shadow-emerald-500/25 hover:shadow-emerald-400/30 hover:-translate-y-0.5"
-              style={{ fontFamily: "'DM Sans', sans-serif" }}
+              style={{ fontFamily: "'Rajdhani', sans-serif" }}
             >
               Generate XI
             </NavLink>
@@ -129,7 +129,7 @@ export default function Navbar() {
                 `px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200
                 ${isActive ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/30" : "text-[#9CA3AF] hover:text-white hover:bg-[#1E293B]"}`
               }
-              style={{ fontFamily: "'DM Sans', sans-serif" }}
+              style={{ fontFamily: "'Rajdhani', sans-serif" }}
             >
               {label}
             </NavLink>
@@ -137,7 +137,7 @@ export default function Navbar() {
           <NavLink
             to="/select"
             className="mt-2 px-4 py-3 bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-bold rounded-xl text-center transition-colors"
-            style={{ fontFamily: "'DM Sans', sans-serif" }}
+            style={{ fontFamily: "'Rajdhani', sans-serif" }}
           >
             Generate XI
           </NavLink>
